@@ -10,6 +10,12 @@ import time
 
 class IRCSocket(object):
 	'''
+	IRCSocket is a generic IRC socket connection class that does provide
+	compliant RFC 1459 / RFC 2812 event handling.
+
+	All classes should inherit this class and override event-driven functionality
+	specificically for it's own needs.
+
 	RFC 1459 Constants
 	https://tools.ietf.org/html/rfc1459#section-4.6
 
@@ -144,11 +150,12 @@ class IRCSocket(object):
 	}
 	
 
-	'''
-	Generic IRC Socket object
-	'''
 	def __init__(self, server, port=6667, proxy=None, proxy_port=None, channels=[],
-		     ipv6=False, ssl=False, vhost=None, nick=None, password=None):		
+		     ipv6=False, ssl=False, vhost=None, nick=None, password=None):
+		'''
+		Generic IRC Socket object
+		'''
+
 		# Server connection settings
 		self.setServer(server)
 		self.setPort(port)
@@ -174,6 +181,10 @@ class IRCSocket(object):
 		self.setContext("ircsocket")
 
 	def connect(self):
+		'''
+		Creates a socket connection and listener to the server.
+		Attempts to reconnect if the connection is unsuccessful.
+		'''
 		try:
 			self.createSocket()
 			self.socket.connect((self.getServer(), self.getPort()))
@@ -348,7 +359,7 @@ class IRCSocket(object):
 		h = hashlib.md5()
 		h.update(r)
 
-		return "exe{0}".format(h.hexdigest()[0:l])
+		return "{0}".format(h.hexdigest()[0:l])
 
 	def getChannels(self):
 		return self.channels

@@ -7,6 +7,17 @@ import time
 import ircmaster
 import ircworker
 
+'''
+******************************************************************************************
+*       ######       #            #         #       #########  #               #         *
+*      #            # #          # #       # #          #      #              # #        *
+*     #            #   #        #   #     #   #         #      #             #   #       *
+*     #           #######      #     #   #     #        #      #            #######      *
+*      #         #       #    #       # #       #       #      #           #       #     *
+*       ######  #         #  #         #         #  #########  #########  #         #    *
+******************************************************************************************
+'''
+
 debug = True
 
 def camila(message):
@@ -56,7 +67,8 @@ def main():
 	threads = []
 	workers = []
 	
-	master = ircmaster.IRCMaster(args.server, args.port, None, None, args.threads, 					     args.attack_channels, args.attack_names, args.ignore_names,
+	master = ircmaster.IRCMaster(args.server, args.port, None, None, args.threads,
+				     args.attack_channels, args.attack_names, args.ignore_names,
 				     args.trusted_names, args.ipv6, args.ssl, args.vhost, "camila")
 	threads.append(master)
 	

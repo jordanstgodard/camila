@@ -10,9 +10,8 @@ import time
 
 import eventnotifier
 import irctargetedsocket
-import ircworker
 
-class IRCMaster(irctargetedsocket.IRCTargetedSocket):
+class IRCNode(irctargetedsocket.IRCTargetedSocket):
 	def __init__(self, server, port=6667, proxy=None, proxy_port=None, thread_count=1,
 		     channels=[], attack_names=[], ignore_names=[], trusted_names=[],
 		     ipv6=False, ssl=False, vhost=None, nick=None, password=None):
@@ -26,7 +25,7 @@ class IRCMaster(irctargetedsocket.IRCTargetedSocket):
 		self.getNotifier().subscribe(self)
 
 		self.setThreadCount(thread_count)
-		self.setWorkers([])
+		self.setNodes([])
 
 		self.setContext("camila")
 		self.getIgnoreNames().append(self.getNickname())
@@ -45,7 +44,7 @@ class IRCMaster(irctargetedsocket.IRCTargetedSocket):
 		}
 	
 	def event(self, line):
-		super(IRCMaster, self).event(line)
+		super(IRCNode, self).event(line)
 
 		args = line.split()
 
@@ -56,15 +55,16 @@ class IRCMaster(irctargetedsocket.IRCTargetedSocket):
 
 			# Server connected
 			if s  == "RPL_WELCOME":
-				for name in self.getTrustedNames():
-					self.sendMessage(name, "I am the master")
+				if self.getNickname() == "camila":
+					for name in self.getTrustedNames():
+						self.sendMessage(name, "I am the master")
 
 				ignore_names = self.getIgnoreNames()				
-				for worker in self.getWorkerNames():
+				for worker in self.getNodeNames():
 					ignore_names.append(worker)
 
 	def processCommand(self, target, message):
-		super(IRCMaster, self).processCommand(target, message)
+		super(IRCNode, self).processCommand(target, message)
 
 		command = message.split()
 		t = self.getTrustedNames()
@@ -159,7 +159,7 @@ class IRCMaster(irctargetedsocket.IRCTargetedSocket):
 			elif command[1] == "-k":
 				names = command[2:]
 				if names == []:
-					names = self.getWorkerNames()
+					names = self.getNodeNames()
 
 				self.getNotifier().publish(12, target, names)
 			
@@ -170,7 +170,7 @@ class IRCMaster(irctargetedsocket.IRCTargetedSocket):
 				self.listNames(target, "ignore_names", self.getIgnoreNames())
 				self.listNames(target, "trusted_names", self.getTrustedNames())
 				self.listNames(target, "channels", self.getChannels())
-				self.listNames(target, "workers", self.getWorkerNames())
+				self.listNames(target, "nodes", self.getNodeNames())
 
 			elif command[1] == "--stop":
 				pass
@@ -186,17 +186,17 @@ class IRCMaster(irctargetedsocket.IRCTargetedSocket):
 
 
 	def inform(self, event, target, data):
-		super(IRCMaster, self).inform(event, target, data)
+		super(IRCNode, self).inform(event, target, data)
 
-		if event == 12: #KILL_WORKERS
+		if event == 12: #KILL_NODES
 			if target == None or target == self.getNickname():
 				self.quit()
 			else:
-				self.listRemove(data, self.getWorkerNames())
+				self.listRemove(data, self.getNodeNames())
 
-				for w in self.getWorkers():
+				for w in self.getNodes():
 					if w.getNickname() in data:
-						self.getWorkers().remove(w)
+						self.getNodes().remove(w)
 						w.quit()
 
 	def getThreadCount(self):
@@ -205,18 +205,3 @@ class IRCMaster(irctargetedsocket.IRCTargetedSocket):
 	def setThreadCount(self, thread_count):
 		self.thread_count = thread_count
 
-	def getWorkers(self):
-		return self.workers
-
-	def setWorkers(self, workers):
-		self.workers = workers
-
-		for w in self.workers:
-			w.setNotifier(self.getNotifier())
-			w.getNotifier().subscribe(w)
-
-	def getWorkerNames(self):
-		names = []
-		for w in self.getWorkers():
-			names.append(w.getNickname())
-		return names

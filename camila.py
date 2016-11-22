@@ -1,11 +1,11 @@
 #!/bin/python
 
 import argparse
-import irc
+import random
 import threading
 import time
-import ircmaster
-import ircworker
+import ircnode
+import eventnotifier
 
 '''
 ******************************************************************************************
@@ -65,25 +65,35 @@ def main():
 	args.server = args.server.split(':')[0]
 
 	threads = []
-	workers = []
+
+	proxy = None
+	proxy_port = None
+	print args.proxies
+	if args.proxies != []:
+		choice = random.choice(args.proxies)
+		proxy = choice.split(':')[0]
+		proxy_port = int(choice.split(':')[-1])
 	
-	master = ircmaster.IRCMaster(args.server, args.port, None, None, args.threads,
-				     args.attack_channels, args.attack_names, args.ignore_names,
-				     args.trusted_names, args.ipv6, args.ssl, args.vhost, "camila")
+	master = ircnode.IRCNode(args.server, args.port, proxy, proxy_port, args.threads,
+				 args.attack_channels, args.attack_names, args.ignore_names,
+				 args.trusted_names, args.ipv6, args.ssl, args.vhost, "camila")
+	notifier = master.getNotifier()
+
 	threads.append(master)
 	
 	for i in range(args.threads):
-		w = ircworker.IRCWorker(args.server, args.port, None, None, args.attack_channels,
-					args.attack_names, args.ignore_names, args.trusted_names,
-					args.ipv6, args.ssl, args.vhost)
-		w.setParent(master)
-
-		workers.append(w)
+		w = ircnode.IRCNode(args.server, args.port, proxy, proxy_port, args.threads,
+				 args.attack_channels, args.attack_names, args.ignore_names,
+				 args.trusted_names, args.ipv6, args.ssl, args.vhost,)
 		threads.append(w)
 	try:
-		master.setWorkers(workers)
-		
+
 		for t in threads:
+			t.setNodes(threads)
+
+			t.setNotifier(notifier)
+			t.getNotifier().subscribe(t)
+
 			t.setDaemon(True)
 			t.start()
 

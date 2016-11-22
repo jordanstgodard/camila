@@ -1,15 +1,37 @@
 #!/bin/python
 
+import glob
 import hashlib
+import importlib
+import os
 import random
 import socket
 import ssl
 import string
+import sys
 import threading
 import time
 import ircsocket
 
+# Loading all modules in /modules/
+#modules_path = "{0}{1}".format(sys.path[0], "/modules/")
+#os.chdir(modules_path)
+#for file in glob.glob("*.py"):
+#	import_module("{0}{1}".format(modules_path, file))
+
 class IRCTargetedSocket(ircsocket.IRCSocket, threading.Thread):
+	'''
+	IRCTargetedSocket is a threaded IRC socket with additional behavior keeping track of
+	names to attack, ignore, and trust. When an object of this class is started, the run()
+	interface method is automatically invoked and creates a connection to the server.
+	Threaded objects of this class should avoid directly calling connect()
+
+	Additionally, it contains an eventnotifier.EventNotifier object to publish messages
+	to a event system for other subscribing objects.
+
+	All attacking classes should inherit this functionality.
+	'''
+
 	def __init__(self, server, port=6667, proxy=None, proxy_port=None, channels=[],
 		     attack_names=[], ignore_names=[], trusted_names=[],
 		     ipv6=False, ssl=False, vhost=None, nick=None, password=None):
@@ -18,6 +40,10 @@ class IRCTargetedSocket(ircsocket.IRCSocket, threading.Thread):
 					     channels, ipv6, ssl, vhost, nick, password)
 
 		threading.Thread.__init__(self)
+
+		self.modules = []
+		
+		self.setNodes([])
 		
 		self.setAttackNames(attack_names)
 		self.setIgnoreNames(ignore_names)
@@ -34,6 +60,8 @@ class IRCTargetedSocket(ircsocket.IRCSocket, threading.Thread):
 		self.setContext("irctargetedsocket")
 
 		self.setNotifier(None)
+
+		
 
 	def run(self):
 		self.connect()
@@ -57,7 +85,7 @@ class IRCTargetedSocket(ircsocket.IRCSocket, threading.Thread):
 					if name[:1] in '~!@%&+:':
 						name = name[1:]
 
-					if name != self.getNickname() and name not in self.getIgnoreNames() and name not in self.getAttackNames():
+					if name != self.getNickname() and name not in self.getIgnoreNames() and name not in self.getAttackNames() and name not in self.getNodeNames():
 						self.getAttackNames().append(name)
 
 			# Nickname not found on server
@@ -81,6 +109,17 @@ class IRCTargetedSocket(ircsocket.IRCSocket, threading.Thread):
 
 	def inform(self, event, target, data):
 		self.sendStatus("event={0}, target={1}, data={2} informed".format(event, target, data))
+		'''
+		exe = None
+		for m in self.getModules():
+			if event.lower() == m.getModuleName().lower():
+				self.sendStatus("Module {0} invoked")
+				exe = m
+				break
+
+		if exe != None:
+			exe.run()
+		'''
 
 		if event == 0: #ADD_ATTACK_NAMES
 			self.listAppend(data, self.getAttackNames())
@@ -125,18 +164,22 @@ class IRCTargetedSocket(ircsocket.IRCSocket, threading.Thread):
 			self.listNames(target, "channels", self.getChannels())
 
 		elif event == 14:
+			
 			for channel in self.getChannels():
 				message = "".join(d + " " for d in data).rstrip()
 				for name in self.getAttackNames():
 					m = "{0} {1} {2}".format(name, message, self.getHash(6, 6)[2:])
 					self.sendMessage(channel, m)
-			'''
+					#self.ctcp(name, "version")
+		'''		
+	
 			for name in self.getAttackNames():
 				message = "".join(d + " " for d in data).rstrip()
 				m = "{0} {1} {2}".format(name, message, self.getHash(6, 6)[2:])
 				self.sendMessage(name, m)
-			'''
-	
+			
+		'''
+
 	def processCommand(self, target, message):
 		pass
 
@@ -185,6 +228,18 @@ class IRCTargetedSocket(ircsocket.IRCSocket, threading.Thread):
 
 	def setIgnoreNames(self, ignore_names):
 		self.ignore_names = ignore_names
+
+	def getNodes(self):
+		return self.nodes
+
+	def setNodes(self, nodes):
+		self.nodes = nodes
+
+	def getNodeNames(self):
+		names = []
+		for n in self.getNodes():
+			names.append(n.getNickname())
+		return names
 
 	def getNotifier(self):
 		return self.notifier

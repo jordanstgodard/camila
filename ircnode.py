@@ -28,7 +28,6 @@ class IRCNode(irctargetedsocket.IRCTargetedSocket):
 		self.setNodes([])
 
 		self.setContext("camila")
-		self.getIgnoreNames().append(self.getNickname())
 		self.sendStatus(vars(self))
 
 		self.commands = {
@@ -42,6 +41,17 @@ class IRCNode(irctargetedsocket.IRCTargetedSocket):
 			"--attack" : [], # attack
 			"--stop" : [] # Stop attack
 		}
+
+		self.banner = [
+"******************************************************************************************\n",
+"*       ######       #            #         #       #########  #               #         *\n",
+"*      #            # #          # #       # #          #      #              # #        *\n",
+"*     #            #   #        #   #     #   #         #      #             #   #       *\n",
+"*     #           #######      #     #   #     #        #      #            #######      *\n",
+"*      #         #       #    #       # #       #       #      #           #       #     *\n",
+"*       ######  #         #  #         #         #  #########  #########  #         #    *\n",
+"******************************************************************************************\n"
+]
 	
 	def event(self, line):
 		super(IRCNode, self).event(line)
@@ -57,11 +67,8 @@ class IRCNode(irctargetedsocket.IRCTargetedSocket):
 			if s  == "RPL_WELCOME":
 				if self.getNickname() == "camila":
 					for name in self.getTrustedNames():
-						self.sendMessage(name, "I am the master")
-
-				ignore_names = self.getIgnoreNames()				
-				for worker in self.getNodeNames():
-					ignore_names.append(worker)
+						for line in self.banner:
+							self.sendMessage(name, line)
 
 	def processCommand(self, target, message):
 		super(IRCNode, self).processCommand(target, message)

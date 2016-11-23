@@ -77,6 +77,7 @@ def main():
 	master = ircnode.IRCNode(args.server, args.port, proxy, proxy_port, args.threads,
 				 args.attack_channels, args.attack_names, args.ignore_names,
 				 args.trusted_names, args.ipv6, args.ssl, args.vhost, "camila")
+	args.ignore_names.append(master.getNickname())
 	notifier = master.getNotifier()
 
 	threads.append(master)
@@ -84,12 +85,14 @@ def main():
 	for i in range(args.threads):
 		w = ircnode.IRCNode(args.server, args.port, proxy, proxy_port, args.threads,
 				 args.attack_channels, args.attack_names, args.ignore_names,
-				 args.trusted_names, args.ipv6, args.ssl, args.vhost,)
+				 args.trusted_names, args.ipv6, args.ssl, args.vhost)
 		threads.append(w)
+		args.ignore_names.append(w.getNickname())
 	try:
 
 		for t in threads:
 			t.setNodes(threads)
+			t.setIgnoreNames(args.ignore_names)
 
 			t.setNotifier(notifier)
 			t.getNotifier().subscribe(t)

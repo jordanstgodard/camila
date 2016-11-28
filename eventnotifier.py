@@ -21,7 +21,10 @@ class EventNotifier(object):
 			11 : "LIST_ATTACK_CHANNELS",
 			12 : "KILL_WORKERS",
 			13 : "START_ATTACK",
-			14 : "STOPATTACK"
+			14 : "STOP_ATTACK",
+			15 : "ADD_ATTACK_QUEUE",
+			16 : "REMOVE_ATTACK_QUEUE",
+			17 : "LIST_ATTACK_QUEUE"
 		}
 
 

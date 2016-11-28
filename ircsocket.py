@@ -3,6 +3,7 @@
 import hashlib
 import random
 import socket
+import socks
 import ssl
 import string
 import threading
@@ -432,9 +433,9 @@ class IRCSocket(object):
 
 	def createSocket(self, conn_timeout=121):
 		if self.isIPv6():
-			self.setSocket(socket.socket(socket.AF_INET6, socket.SOCK_STREAM))
+			self.setSocket(socks.socksocket(socket.AF_INET6, socket.SOCK_STREAM))
 		else:
-			self.setSocket(socket.socket(socket.AF_INET, socket.SOCK_STREAM))
+			self.setSocket(socks.socksocket(socket.AF_INET, socket.SOCK_STREAM))
 
 		self.getSocket().setblocking(0)
 		self.getSocket().settimeout(conn_timeout)
@@ -443,7 +444,7 @@ class IRCSocket(object):
 			self.getSocket().bind((self.getVHost(), 0))
 
 		if self.getProxy():
-			self.getSocket().setProxy(socks.PROXY_TYPE_SOCKS5, self.getProxy(), self.getProxyPort())
+			self.getSocket().setproxy(socks.PROXY_TYPE_SOCKS5, self.getProxy(), self.getProxyPort())
 
 		if self.isSSL():
 			self.setSocket(ssl.wrap_socket(self.getSocket()))

@@ -108,7 +108,6 @@ def main():
 
 		for t in threads:
 			t.kill_received = True
-			t.stop()
 
 if __name__ == "__main__":
 	main()

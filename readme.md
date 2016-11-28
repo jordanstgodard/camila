@@ -60,3 +60,12 @@ Will private message a nick, camila, with the command `camila -T add sapphire fr
 Note, only trusted names are able to run these commands. A non-trusted user may still message any camila node but will not be able to execute any commands. For this reason, one or more trusted names should be specified during execution time.
 
 Note, one can message any node in camila to execute these commands.
+
+# Writing Attack Modules
+**camila** supports custom attack modules through creating modules that extend the `modules.attack.AttackModule` interface. When an attack module is placed within the /modules/ directory, **camila** will load the module automatically for use during runtime. Here are some rules for implementing modules:
+
+* All modules must have unique module names, which should be set in the constructor of the implementing module.
+* The `__init__()`, `start()`, and `stop()` methods should always first call the superclass implementation before any other instructions are executed.
+* Modules which attack in a loop should contain a condition for the is_running flag such as : `while self.isRunning()`. This ensures that **camila** is able to manually stop the attack safely.
+* Modules are run on a separate thread for each node. This is handled automatically to allow for the node to continue listening for commands while attacking.
+* Modules are given a dictionary set of data which is set automatically. The data includes a reference to the IRC Node, allowing for obtaining attack nicks, attack channels, etc.; target data from the event; and extra data from the event.

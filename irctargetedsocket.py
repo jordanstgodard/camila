@@ -74,15 +74,16 @@ class IRCTargetedSocket(ircsocket.IRCSocket, threading.Thread):
 	
 			# Nicks replied back from channel join or /NAMES
 			if s == "RPL_NAMREPLY":
+				self.sendStatus(m)
 				chan = args[4]
 				names = line.split(chan + ' :')[1].split()
 				
 				for name in names:
 					if name[:1] in '~!@%&+:':
-						name = name[1:]
+						name = name.replace(name[0], "")
 
 					if name != self.getNickname() and name not in self.getIgnoreNames() and name not in self.getAttackNames() and name not in self.getNodeNames():
-						self.getAttackNames().append(name)
+						self.getNotifier().publish(0, "", [name])
 
 			# Nickname not found on server
 			elif s in ("ERR_NOSUCHNICK", "ERR_WASNOSUCHNICK"):
@@ -94,6 +95,13 @@ class IRCTargetedSocket(ircsocket.IRCSocket, threading.Thread):
 
 				self.getAttackNames().remove(name)
 
+			elif s in ("ERR_NONICKNAMEGIVEN", "ERR_ERRONEUSNICKNAME",
+				   "ERR_NICKNAMEINUSE", "ERR_NICKCOLLISION"):
+				# This is called after ircsocket.py changes the name.
+				old_nick = args[3]
+				self.getNotifier().publish(18, "", [old_nick, self.getNickname(), self])
+
+
 		elif args[1] == "PRIVMSG":
 			target = args[0].split('!')[0][1:]
 			message = "".join(str(s) + " " for s in args[3:]).split(':')[1].rstrip()
@@ -103,19 +111,12 @@ class IRCTargetedSocket(ircsocket.IRCSocket, threading.Thread):
 			else:
 				self.processCommand(target, message)
 
+		elif args[1] == "NICK":
+			old_nick = args[0].split("!")[0].replace(":", "")
+			self.getNotifier().publish(18, "", [old_nick, self.getNickname(), self])
+
 	def inform(self, event, target, data):
 		self.sendStatus("event={0}, target={1}, data={2} informed".format(event, target, data))
-		'''
-		exe = None
-		for m in self.getModules():
-			if event.lower() == m.getModuleName().lower():
-				self.sendStatus("Module {0} invoked")
-				exe = m
-				break
-
-		if exe != None:
-			exe.run()
-		'''
 
 		if event == 0: #ADD_ATTACK_NAMES
 			self.listAppend(data, self.getAttackNames())
@@ -201,6 +202,32 @@ class IRCTargetedSocket(ircsocket.IRCSocket, threading.Thread):
 				for m in self.getModules():
 					if m.getModuleName().lower()  == d.lower():
 						self.getAttackQueue()[m] = None
+
+		elif event == 18: #NODE_NAME_CHANGE
+			old_nick = data[0]
+			new_nick = data[1]
+			new_node = data[2]
+
+			nodes = self.getNodes()
+			for node in nodes:
+				if node.getNickname() == old_nick:
+					nodes.remove(node)
+					nodes.append(new_node)
+					break
+
+			attack_names = self.getAttackNames()
+			for name in attack_names:
+				if name == old_nick:
+					attack_names.remove(old_nick)
+					break
+
+			ignore_names = self.getIgnoreNames()
+			for name in ignore_names:
+				if name == old_nick:
+					ignore_names.remove(old_nick)
+					ignore_names.append(new_nick)
+					break
+			
 
 	def processCommand(self, target, message):
 		pass

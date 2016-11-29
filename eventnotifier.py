@@ -24,7 +24,8 @@ class EventNotifier(object):
 			14 : "STOP_ATTACK",
 			15 : "ADD_ATTACK_QUEUE",
 			16 : "REMOVE_ATTACK_QUEUE",
-			17 : "LIST_ATTACK_QUEUE"
+			17 : "LIST_ATTACK_QUEUE",
+			18 : "NODE_NAME_CHANGE"
 		}
 
 

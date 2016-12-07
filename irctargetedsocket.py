@@ -307,12 +307,6 @@ class IRCTargetedSocket(ircsocket.IRCSocket, threading.Thread):
 	def setIgnoreNames(self, ignore_names):
 		self.ignore_names = ignore_names
 
-	def isAttacking(self):
-		return self.is_attacking
-
-	def setAttacking(self, is_attacking):
-		self.is_attacking = is_attacking
-
 	def getModules(self):
 		return self.modules
 

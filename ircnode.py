@@ -202,24 +202,23 @@ class IRCNode(irctargetedsocket.IRCTargetedSocket):
 
 
 			elif command[1] == "--attack":
-				l = self.getAttackQueue().keys()
+				l = self.getAttackQueue()
 
 				if command[2] == "add":
 					self.getNotifier().publish(15, "", command[3:])
-					self.listNames(target, "attack_queue", l)
+					self.listNames(target, "attack_queue", l.keys())
 
 				elif command[2] == "remove":
 					self.getNotifier().publish(16, "", command[3:])
-					self.listNames(target, "attack_queue", l)
+					self.listNames(target, "attack_queue", l.keys())
 
 				elif command[2] == "list":
-					self.listNames(target, "attack_queue", l)
+					self.listNames(target, "attack_queue", l.keys())
 
 				elif command[2] == "start":
 					self.getNotifier().publish(13, self.getUser().getNickname(), command[3:])
 
 				elif command[2] == "stop":
-					self.setAttacking(False)
 					self.getNotifier().publish(14, "", "")
 		else:
 			pass

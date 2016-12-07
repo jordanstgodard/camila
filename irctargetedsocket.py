@@ -9,6 +9,8 @@ import sys
 import threading
 import time
 
+import Queue
+
 import ircsocket
 import modules
 import moduledelegate
@@ -26,17 +28,15 @@ class IRCTargetedSocket(ircsocket.IRCSocket, threading.Thread):
 	All attacking classes should inherit this functionality.
 	'''
 
-	def __init__(self, server, port=6667, proxy=None, proxy_port=None, channels=[],
-		     attack_names=[], ignore_names=[], trusted_names=[],
-		     ipv6=False, ssl=False, vhost=None, nick=None, password=None):
-		
-		ircsocket.IRCSocket.__init__(self, server, port, proxy, proxy_port,
-					     channels, ipv6, ssl, vhost, nick, password)
+	def __init__(self, server, user, attack_channels=[], attack_names=[],
+				 ignore_names=[], trusted_names=[]):
+
+		ircsocket.IRCSocket.__init__(self, server, user, attack_channels)
 
 		threading.Thread.__init__(self)
 
 		self.setNodes([])
-		
+
 		self.setAttackNames(attack_names)
 		self.setIgnoreNames(ignore_names)
 		self.setTrustedNames(trusted_names)
@@ -56,37 +56,46 @@ class IRCTargetedSocket(ircsocket.IRCSocket, threading.Thread):
 		modDelegate = moduledelegate.ModuleDelegate()
 		self.setModules(modDelegate.getModules())
 
-		# Dictionary of Module -> Thread		
+		# Dictionary of Module -> Thread
 		self.setAttackQueue({})
-	
+		self.attack_thread_queue = Queue.Queue()
+
 	def run(self):
 		self.connect()
 
 	def event(self, line):
 		super(IRCTargetedSocket, self).event(line)
-	
+
+		s = self.getServer()
+		u = self.getUser()
+
 		args = line.split()
 		c = self.getCodes()
 
 		if args[1] in c:
-			s = c[args[1]]
-			m = "{0} ({1}) received.".format(s, args[1]) 
-	
+			reply = c[args[1]]
+			m = "{0} ({1}) received.".format(s.getAddress(), args[1])
+
+			if reply in ("ERR_NONICKNAMEGIVEN", "ERR_ERRONEUSNICKNAME",
+						   "ERR_NICKNAMEINUSE", "ERR_NICKCOLLISION"):
+				# This is called after ircsocket.py changes the name.
+				old_nick = args[3]
+				self.getNotifier().publish(18, "", [old_nick, u.getNickname(), self])
+
 			# Nicks replied back from channel join or /NAMES
-			if s == "RPL_NAMREPLY":
+			elif reply == "RPL_NAMREPLY":
 				self.sendStatus(m)
 				chan = args[4]
-				names = line.split(chan + ' :')[1].split()
-				
-				for name in names:
-					if name[:1] in '~!@%&+:':
-						name = name.replace(name[0], "")
 
-					if name != self.getNickname() and name not in self.getIgnoreNames() and name not in self.getAttackNames() and name not in self.getNodeNames():
-						self.getNotifier().publish(0, "", [name])
+				for channel in self.getChannels():
+					if channel.getName() == chan:
+						for chan_user in channel.getUsers():
+							n = chan_user.getNickname()
+							if n != u.getNickname() and n not in self.getIgnoreNames() and n not in self.getAttackNames() and n not in self.getNodeNames():
+								self.notifier.publish(0, "", [n])
 
 			# Nickname not found on server
-			elif s in ("ERR_NOSUCHNICK", "ERR_WASNOSUCHNICK"):
+			elif reply in ("ERR_NOSUCHNICK", "ERR_WASNOSUCHNICK"):
 				self.sendStatus(m)
 
 				name = args[3]
@@ -95,13 +104,7 @@ class IRCTargetedSocket(ircsocket.IRCSocket, threading.Thread):
 
 				self.getAttackNames().remove(name)
 
-			elif s in ("ERR_NONICKNAMEGIVEN", "ERR_ERRONEUSNICKNAME",
-				   "ERR_NICKNAMEINUSE", "ERR_NICKCOLLISION"):
-				# This is called after ircsocket.py changes the name.
-				old_nick = args[3]
-				self.getNotifier().publish(18, "", [old_nick, self.getNickname(), self])
-
-
+		# args[1] not in c
 		elif args[1] == "PRIVMSG":
 			target = args[0].split('!')[0][1:]
 			message = "".join(str(s) + " " for s in args[3:]).split(':')[1].rstrip()
@@ -113,9 +116,12 @@ class IRCTargetedSocket(ircsocket.IRCSocket, threading.Thread):
 
 		elif args[1] == "NICK":
 			old_nick = args[0].split("!")[0].replace(":", "")
-			self.getNotifier().publish(18, "", [old_nick, self.getNickname(), self])
+			self.getNotifier().publish(18, "", [old_nick, u.getNickname(), self])
 
 	def inform(self, event, target, data):
+		s = self.getServer()
+		u = self.getUser()
+
 		self.sendStatus("event={0}, target={1}, data={2} informed".format(event, target, data))
 
 		if event == 0: #ADD_ATTACK_NAMES
@@ -147,7 +153,7 @@ class IRCTargetedSocket(ircsocket.IRCSocket, threading.Thread):
 
 		elif event == 9: #ADD_ATTACK_CHANNELS
 			self.listAppend(data, self.getChannels())
-			
+
 			for channel in data:
 				self.join(channel)
 
@@ -162,46 +168,46 @@ class IRCTargetedSocket(ircsocket.IRCSocket, threading.Thread):
 
 		elif event == 13: #START_ATTACK
 			attackData = {
-				"node" : self,
 				"target" : target,
 				"data" : data
 			}
 
-			queue = self.getAttackQueue()
-			for attack in queue.keys():
-				if not attack.isRunning():
+			if self.attack_thread_queue.empty() and u.getNickname() != self.getContext():
+				self.attack_thread_queue.put("attacking")
+				queue = self.getAttackQueue()
+
+				for attack in queue.keys():
 					attack.setData(attackData)
-				
+					attack.setNode(self)
 					queue[attack].start()
 
 		elif event == 14: #STOP_ATTACK
-			queue = self.getAttackQueue()
-			for attack in queue.keys():
-				self.sendStatus("STOPPING. attack={0}".format(attack))
 
-				if attack.isRunning():
-					attack.stop()
+			while not self.attack_thread_queue.empty():
+				self.sendStatus("STOPPING ATTACK")
 
-					queue[attack].kill_received = True
+				self.attack_thread_queue.get_nowait()
+				self.attack_thread_queue.task_done()
 
-					# Create a new thread since threads are only started once
-					t = threading.Thread(target=attack.start)
-					t.setDaemon(True)
-					queue[attack] = t
+			self.setAttackQueue({})
 
 		elif event == 15: #ADD_ATTACK_QUEUE
 			for d in data:
 				for m in self.getModules():
 					if m.getModuleName().lower() == d.lower():
-						t = threading.Thread(target=m.start)
+						t = threading.Thread(target=m.start, args=[self.attack_thread_queue])
 						t.setDaemon(True)
 						self.getAttackQueue()[m] = t
+
+						self.sendStatus(self.getAttackQueue()[m])
 
 		elif event == 16: #REMOVE_ATTACK_QUEUE
 			for d in data:
 				for m in self.getModules():
 					if m.getModuleName().lower()  == d.lower():
-						self.getAttackQueue()[m] = None
+						queue = self.getAttackQueue()
+						queue[m] = None
+						queue.pop(m, None)
 
 		elif event == 18: #NODE_NAME_CHANGE
 			old_nick = data[0]
@@ -210,7 +216,7 @@ class IRCTargetedSocket(ircsocket.IRCSocket, threading.Thread):
 
 			nodes = self.getNodes()
 			for node in nodes:
-				if node.getNickname() == old_nick:
+				if node.getUser().getNickname() == old_nick:
 					nodes.remove(node)
 					nodes.append(new_node)
 					break
@@ -227,7 +233,7 @@ class IRCTargetedSocket(ircsocket.IRCSocket, threading.Thread):
 					ignore_names.remove(old_nick)
 					ignore_names.append(new_nick)
 					break
-			
+
 
 	def processCommand(self, target, message):
 		pass
@@ -251,19 +257,19 @@ class IRCTargetedSocket(ircsocket.IRCSocket, threading.Thread):
 		for name in names:
 			l.append(name)
 			i = i + 1
-		
+
 			if i % 16 == 0:
-				self.sendMessage(target, m.format(t, self.getNickname(), self.getContext(), listname, l))
-				self.sendStatus(m.format(t, self.getNickname(), self.getContext(), listname, l))
+				self.sendMessage(target, m.format(t, self.getUser().getNickname(), self.getContext(), listname, l))
+				self.sendStatus(m.format(t, self.getUser().getNickname(), self.getContext(), listname, l))
 				l[:] = []
 
 		if l != []:
-			self.sendMessage(target, m.format(t, self.getNickname(), self.getContext(), listname, l))
-			self.sendStatus(m.format(t, self.getNickname(), self.getContext(), listname, l))
+			self.sendMessage(target, m.format(t, self.getUser().getNickname(), self.getContext(), listname, l))
+			self.sendStatus(m.format(t, self.getUser().getNickname(), self.getContext(), listname, l))
 
 		if names == None or names == []:
-			self.sendMessage(target, m.format(t, self.getNickname(), self.getContext(), listname, names))
-			self.sendStatus(m.format(t, self.getNickname(), self.getContext(), listname, names))
+			self.sendMessage(target, m.format(t, self.getUser().getNickname(), self.getContext(), listname, names))
+			self.sendStatus(m.format(t, self.getUser().getNickname(), self.getContext(), listname, names))
 
 	def getCommands(self):
 		return self.commands
@@ -301,6 +307,12 @@ class IRCTargetedSocket(ircsocket.IRCSocket, threading.Thread):
 	def setIgnoreNames(self, ignore_names):
 		self.ignore_names = ignore_names
 
+	def isAttacking(self):
+		return self.is_attacking
+
+	def setAttacking(self, is_attacking):
+		self.is_attacking = is_attacking
+
 	def getModules(self):
 		return self.modules
 
@@ -316,7 +328,7 @@ class IRCTargetedSocket(ircsocket.IRCSocket, threading.Thread):
 	def getNodeNames(self):
 		names = []
 		for n in self.getNodes():
-			names.append(n.getNickname())
+			names.append(n.getUser().getNickname())
 		return names
 
 	def getNotifier(self):

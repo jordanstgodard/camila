@@ -9,6 +9,8 @@ import string
 import threading
 import time
 
+from libcamila import channel, server, user
+
 class IRCSocket(object):
 	'''
 	IRCSocket is a generic IRC socket connection class that does provide
@@ -149,34 +151,28 @@ class IRCSocket(object):
 		"501" : "ERR_UMODEUNKNOWNFLAG",
 		"502" : "ERR_USERSDONTMATCH"
 	}
-	
 
-	def __init__(self, server, port=6667, proxy=None, proxy_port=None, channels=[],
-		     ipv6=False, ssl=False, vhost=None, nick=None, password=None):
+	def __init__(self, server, user, channels=[]):
 		'''
 		Generic IRC Socket object
 		'''
 
 		# Server connection settings
 		self.setServer(server)
-		self.setPort(port)
 
-		self.setIPv6(ipv6)
-		self.setSSL(ssl)
-		self.setVHost(vhost)
 		self.setSocket(None)
 
-		self.setProxy(proxy)
-		self.setProxyPort(proxy_port)
+		self.setUser(user)
+		u = self.getUser()
+		nickname = u.getNickname() if u.getNickname() != None else self.getHash(4, 15)
+		u.setNickname(nickname)
+		u.setRealname(nickname)
+		u.setUsername(nickname)
 
-		nickname = nick if nick != None else self.getHash(4, 15)
-		self.setNickname(nickname)
-		self.setPassword(password)
-
-		self.setRealname(self.nickname)
-		self.setUsername(self.nickname)
-
-		self.setChannels(channels)
+		channel_obj = []
+		for c in channels:
+			channel_obj.append(channel.Channel(c))
+		self.setChannels(channel_obj)
 
 		self.setConnected(False)
 		self.setContext("ircsocket")
@@ -186,16 +182,19 @@ class IRCSocket(object):
 		Creates a socket connection and listener to the server.
 		Attempts to reconnect if the connection is unsuccessful.
 		'''
+
+		s = self.getServer()
+		u = self.getUser()
 		try:
 			self.createSocket()
-			self.socket.connect((self.getServer(), self.getPort()))
+			self.socket.connect((s.getAddress(), s.getPort()))
 
-			self.raw('USER {0} 0 * :{1}'.format(self.username, self.realname))
-			self.nick(self.getNickname())
-			if self.password:
-				self.raw('PASS {0}'.format(self.password))
+			self.raw('USER {0} 0 * :{1}'.format(u.getUsername(), u.getRealname()))
+			self.nick(u.getNickname())
+			if u.getPassword():
+				self.raw('PASS {0}'.format(u.getPassword()))
 		except socket.error as e:
-			print 'Failed to connect to {0}:{1}. {2}'.format(self.server, self.port, e)
+			print 'Failed to connect to {0}:{1}. {2}'.format(u.getAddress(), self.getServer().getPort(), e)
 			self.reconnect()
 		else:
 			self.connected = True
@@ -205,52 +204,67 @@ class IRCSocket(object):
 		self.sendMessage(target, '\001{0}\001'.format(data))
 
 	def event(self, line):
+		s = self.getServer()
+		u = self.getUser()
+
 		args = line.split()
 
 		if args[0] == 'PING':
 			self.raw('PONG {0}'.format(args[1][1:]))
-		
+
 		# Exception and code handling
 		c = self.getCodes()
 		if args[1] in c:
-			s = c[args[1]]
-			m = "{0} ({1}) received.".format(s, args[1]) 
+			reply = c[args[1]]
+			m = "{0} ({1}) received.".format(s, args[1])
 
 			# Server connected
-			if s in ("RPL_WELCOME", "RPL_YOURHOST", "RPL_CREATED"):
-				n = "Connected to {0}:{1}".format(self.getServer(), self.getPort())
-				if self.getProxy():
-					n = "{0} using proxy {1}:{2}".format(n, self.getProxy(), self.getProxyPort())
+			if reply in ("RPL_WELCOME", "RPL_YOURHOST", "RPL_CREATED"):
+				n = "Connected to {0}:{1}".format(s.getAddress(), s.getPort())
+				if s.getProxy():
+					n = "{0} using proxy {1}:{2}".format(n, s.getProxy(), s.getProxyPort())
 				self.sendStatus("{0} {1}".format(m, n))
 
 				for channel in self.getChannels():
-					self.join(channel)
+					self.join(channel.getName())
 
 			# Server unavailable exceptions
-			elif s in ("ERR_NOSUCHSERVER", "ERR_YOUREBANNEDCREEP",
+			elif reply in ("ERR_NOSUCHSERVER", "ERR_YOUREBANNEDCREEP",
 				   "ERR_YOUWILLBEBANNED"):
 				self.quit()
 
 			# Channel unavailable exceptions
-			elif s in ("ERR_UNAVAILARESOURCE", "ERR_NOSUCHCHANNEL",
+			elif reply in ("ERR_UNAVAILARESOURCE", "ERR_NOSUCHCHANNEL",
 				   "ERR_CHANNELISFULL", "ERR_INVITEONLYCHAN",
 				   "ERR_BANNEDFROMCHAN", "ERR_BADCHANNELKEY"):
 				self.sendStatus(m)
 
 				chan = args[3]
 				for channel in self.getChannels():
-					if channel == chan:
+					if channel.getName().lower() == chan.lower():
 						n = "Removing {0} from channels list".format(chan)
 						self.sendStatus(n)
 						self.getChannels().remove(channel)
 
 			# Nickname unavailable exceptions
-			elif s in ("ERR_NONICKNAMEGIVEN", "ERR_ERRONEUSNICKNAME",
+			elif reply in ("ERR_NONICKNAMEGIVEN", "ERR_ERRONEUSNICKNAME",
 				   "ERR_NICKNAMEINUSE", "ERR_NICKCOLLISION"):
 				self.sendStatus(m)
-				self.setNickname(self.getHash(4, 15))
-				self.nick(self.getNickname())
+				u.setNickname(self.getHash(4, 15))
+				self.nick(u.getNickname())
 
+			elif reply == "RPL_NAMREPLY":
+				chan = args[4]
+				names = line.split(chan + ' :')[1].split()
+
+				for c in self.getChannels():
+					if c.getName() == chan:
+						for name in names:
+							if name[:1] in '~!@%&+:':
+								name = name.replace(name[0], "")
+							if name not in c.getUsers():
+								c.getUsers().append(user.User(name))
+								
 		# KICK auto join
 		elif args[1] == "KICK":
 			chan = args[2]
@@ -281,16 +295,19 @@ class IRCSocket(object):
 			self.raw('KICK {0} {1}'.format(nick, channel))
 
 	def listen(self):
+		s = self.getServer()
+
 		while self.connected:
 			try:
 				data = self.socket.recv(1024)
 				lines = data.split('\r\n')
 
 				for line in lines:
-					self.sendStatus(line)
+					if line != "":
+						self.sendStatus(line)
 
 					if line.startswith('ERROR :Closing Link:'):
-						raise Exception('Connection to {0}:{1} closed'.format(self.server, self.port))
+						raise Exception('Connection to {0}:{1} closed'.format(s.getAddress(), s.getPort()))
 					elif len(line.split()) >= 2:
 						self.event(line)
 			except Exception as e:
@@ -353,7 +370,7 @@ class IRCSocket(object):
 	def getHash(self, min=1, max=32):
 		if min <= 0: min = 1
 		if max <= 0: max = 32
-		
+
 		charset = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ01234567890'
 		l = random.randint(min, max)
 		r = "".join(random.choice(charset) for i in range(10))
@@ -383,48 +400,6 @@ class IRCSocket(object):
 	def setContext(self, context):
 		self.context = context
 
-	def isIPv6(self):
-		return self.ipv6
-
-	def setIPv6(self, ipv6):
-		self.ipv6 = ipv6
-
-	def getNickname(self):
-		return self.nickname
-
-	def setNickname(self, nickname):
-		self.nickname = nickname
-
-	def getPassword(self):
-		return self.password
-
-	def setPassword(self, password):
-		self.password = password
-
-	def getPort(self):
-		return self.port
-
-	def setPort(self, port):
-		self.port = port
-
-	def getProxy(self):
-		return self.proxy
-
-	def setProxy(self, proxy):
-		self.proxy = proxy
-
-	def getProxyPort(self):
-		return self.proxy_port
-
-	def setProxyPort(self, proxy_port):
-		self.proxy_port = proxy_port
-
-	def getRealname(self):
-		return self.realname
-
-	def setRealname(self, realname):
-		self.realname = realname
-
 	def getServer(self):
 		return self.server
 
@@ -432,7 +407,9 @@ class IRCSocket(object):
 		self.server = server
 
 	def createSocket(self, conn_timeout=121):
-		if self.isIPv6():
+		s = self.getServer()
+
+		if s.isIPv6():
 			self.setSocket(socks.socksocket(socket.AF_INET6, socket.SOCK_STREAM))
 		else:
 			self.setSocket(socks.socksocket(socket.AF_INET, socket.SOCK_STREAM))
@@ -440,41 +417,27 @@ class IRCSocket(object):
 		self.getSocket().setblocking(0)
 		self.getSocket().settimeout(conn_timeout)
 
-		if self.getVHost():
-			self.getSocket().bind((self.getVHost(), 0))
+		if s.getVHost():
+			self.getSocket().bind((s.getVHost(), 0))
 
-		if self.getProxy():
-			self.getSocket().setproxy(socks.PROXY_TYPE_SOCKS5, self.getProxy(), self.getProxyPort())
+		if s.getProxy():
+			self.getSocket().setproxy(socks.PROXY_TYPE_SOCKS5, s.getProxy(), s.getProxyPort())
 
-		if self.isSSL():
+		if s.isSSL():
 			self.setSocket(ssl.wrap_socket(self.getSocket()))
 
- 
 	def getSocket(self):
 		return self.socket
 
 	def setSocket(self, socket):
 		self.socket = socket
 
-	def isSSL(self):
-		return self.ssl
-
-	def setSSL(self, ssl):
-		self.ssl = ssl
-
-	def getUsername(self):
-		return self.username
-
-	def setUsername(self, username):
-		self.username = username
-
-	def getVHost(self):
-		return self.vhost
-
-	def setVHost(self, vhost):
-		self.vhost = vhost
-
 	def sendStatus(self, message):
 		t = time.strftime('[%I:%M:%S]')
-		print '{0} | [{1}@{2}] - {3}'.format(t, self.getNickname(), self.getContext(), message)
+		print '{0} | [{1}@{2}] - {3}'.format(t, self.getUser().getNickname(), self.getContext(), message)
 
+	def getUser(self):
+		return self.user
+
+	def setUser(self, user):
+		self.user = user

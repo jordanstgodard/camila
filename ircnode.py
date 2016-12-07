@@ -2,6 +2,7 @@
 
 import hashlib
 import random
+import signal
 import socket
 import ssl
 import string
@@ -12,14 +13,11 @@ import eventnotifier
 import irctargetedsocket
 
 class IRCNode(irctargetedsocket.IRCTargetedSocket):
-	def __init__(self, server, port=6667, proxy=None, proxy_port=None, thread_count=1,
-		     channels=[], attack_names=[], ignore_names=[], trusted_names=[],
-		     ipv6=False, ssl=False, vhost=None, nick=None, password=None):
+	def __init__(self, server, user, thread_count=1, attack_channels=[],
+				 attack_names=[], ignore_names=[], trusted_names=[]):
 
-		irctargetedsocket.IRCTargetedSocket.__init__(self, server, port, proxy,
-							     proxy_port, channels, attack_names,
-							     ignore_names, trusted_names, ipv6,
-							     ssl, vhost, nick, password)
+		irctargetedsocket.IRCTargetedSocket.__init__(self, server, user, attack_channels,
+													 attack_names, ignore_names, trusted_names)
 
 		self.setNotifier(eventnotifier.EventNotifier())
 		self.getNotifier().subscribe(self)
@@ -52,23 +50,27 @@ class IRCNode(irctargetedsocket.IRCTargetedSocket):
 "*       ######  #         #  #         #         #  #########  #########  #         #    *\n",
 "******************************************************************************************\n"
 ]
-	
+
 	def event(self, line):
 		super(IRCNode, self).event(line)
+
+		s = self.getServer()
+		u = self.getUser()
 
 		args = line.split()
 
 		# Exception and code handling
 		c = self.getCodes()
 		if args[1] in c:
-			s = c[args[1]]
+			reply = c[args[1]]
 
 			# Server connected
-			if s  == "RPL_WELCOME":
-				if self.getNickname() == self.getContext():
+			if reply  == "RPL_WELCOME":
+				if u.getNickname() == self.getContext():
 					for name in self.getTrustedNames():
 						for line in self.banner:
 							self.sendMessage(name, line)
+						self.mode(name, "")
 
 	def processCommand(self, target, message):
 		super(IRCNode, self).processCommand(target, message)
@@ -77,7 +79,7 @@ class IRCNode(irctargetedsocket.IRCTargetedSocket):
 		t = self.getTrustedNames()
 
 		if t == None or t == []:
-			return	
+			return
 
 		if target in t and command[0] == self.getContext() and command[1] in self.getCommands():
 			c = self.getCommands()
@@ -91,7 +93,7 @@ class IRCNode(irctargetedsocket.IRCTargetedSocket):
 					names = command[3:]
 					self.getNotifier().publish(0, target, names)
 					self.listNames(target, "attack_names", l)
-				
+
 				# Remove attack names
 				elif command[2] == "remove":
 					names = command[3:]
@@ -111,7 +113,7 @@ class IRCNode(irctargetedsocket.IRCTargetedSocket):
 					names = command[3:]
 					self.getNotifier().publish(3, target, names)
 					self.listNames(target, "ignore_names", l)
-				
+
 				# Remove ignore names
 				elif command[2] == "remove":
 					names = command[3:]
@@ -131,7 +133,7 @@ class IRCNode(irctargetedsocket.IRCTargetedSocket):
 					names = command[3:]
 					self.getNotifier().publish(6, target, names)
 					self.listNames(target, "trusted_names", l)
-				
+
 				# Remove trusted names
 				elif command[2] == "remove":
 					names = command[3:]
@@ -140,7 +142,7 @@ class IRCNode(irctargetedsocket.IRCTargetedSocket):
 
 				# List trusted names
 				elif command[2] == "list":
-					self.listNames(target, "trusted_names", self.getTrustedNames())
+					self.listNames(target, "trusted_names", l)
 
 			# Attack Channels
 			elif command[1] == "-c":
@@ -160,7 +162,7 @@ class IRCNode(irctargetedsocket.IRCTargetedSocket):
 
 				# List attack channels
 				elif command[2] == "list":
-					self.getNotifier().publish(11, target, names)
+					self.listNames(target, "channels", l)
 
 			# Kill workers
 			elif command[1] == "-k":
@@ -169,7 +171,7 @@ class IRCNode(irctargetedsocket.IRCTargetedSocket):
 					names = self.getNodeNames()
 
 				self.getNotifier().publish(12, target, names)
-			
+
 			# Modules
 			elif command[1].lower() == '--modules':
 				l = []
@@ -180,7 +182,7 @@ class IRCNode(irctargetedsocket.IRCTargetedSocket):
 
 				if command[2].lower() == 'list':
 					self.listNames(target, "modules", l)
-				
+
 			# Status
 			elif command[1].lower() == '--status':
 				self.listNames(target, "attack_names", self.getAttackNames())
@@ -200,7 +202,7 @@ class IRCNode(irctargetedsocket.IRCTargetedSocket):
 
 
 			elif command[1] == "--attack":
-				l = self.getAttackQueue()
+				l = self.getAttackQueue().keys()
 
 				if command[2] == "add":
 					self.getNotifier().publish(15, "", command[3:])
@@ -214,11 +216,11 @@ class IRCNode(irctargetedsocket.IRCTargetedSocket):
 					self.listNames(target, "attack_queue", l)
 
 				elif command[2] == "start":
-					self.getNotifier().publish(13, "", command[3:])
+					self.getNotifier().publish(13, self.getUser().getNickname(), command[3:])
 
 				elif command[2] == "stop":
-					self.getNotifier().publish(14, "", command[3:])
-
+					self.setAttacking(False)
+					self.getNotifier().publish(14, "", "")
 		else:
 			pass
 
@@ -227,13 +229,13 @@ class IRCNode(irctargetedsocket.IRCTargetedSocket):
 		super(IRCNode, self).inform(event, target, data)
 
 		if event == 12: #KILL_NODES
-			if target == None or target == self.getNickname():
+			if target == None or target == self.getUser().getNickname():
 				self.quit()
 			else:
 				self.listRemove(data, self.getNodeNames())
 
 				for w in self.getNodes():
-					if w.getNickname() in data:
+					if w.getUser().getNickname() in data:
 						self.getNodes().remove(w)
 						w.quit()
 
@@ -242,4 +244,3 @@ class IRCNode(irctargetedsocket.IRCTargetedSocket):
 
 	def setThreadCount(self, thread_count):
 		self.thread_count = thread_count
-

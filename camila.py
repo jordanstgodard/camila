@@ -7,6 +7,8 @@ import time
 import ircnode
 import eventnotifier
 
+from libcamila import channel, server, user
+
 '''
 ******************************************************************************************
 *       ######       #            #         #       #########  #               #         *
@@ -60,7 +62,7 @@ def main():
 	if args.threads == None:
 		args.threads = 1
 
-	
+
 	args.port = int(args.server.split(':')[-1])
 	args.server = args.server.split(':')[0]
 
@@ -68,26 +70,29 @@ def main():
 
 	proxy = None
 	proxy_port = None
-	print args.proxies
+	
 	if args.proxies != []:
 		choice = random.choice(args.proxies)
 		proxy = choice.split(':')[0]
 		proxy_port = int(choice.split(':')[-1])
-	
-	master = ircnode.IRCNode(args.server, args.port, proxy, proxy_port, args.threads,
-				 args.attack_channels, args.attack_names, args.ignore_names,
-				 args.trusted_names, args.ipv6, args.ssl, args.vhost, "camila")
-	args.ignore_names.append(master.getNickname())
+
+	s = server.Server(args.server, args.port, proxy, proxy_port,
+					  args.ipv6, args.ssl, args.vhost)
+	u = user.User("camila")
+
+	master = ircnode.IRCNode(s, u, args.threads, args.attack_channels,
+							 args.attack_names, args.ignore_names,
+							 args.trusted_names)
+	args.ignore_names.append(master.getUser().getNickname())
 	notifier = master.getNotifier()
 
 	threads.append(master)
-	
+
 	for i in range(args.threads):
-		w = ircnode.IRCNode(args.server, args.port, proxy, proxy_port, args.threads,
-				 args.attack_channels, args.attack_names, args.ignore_names,
-				 args.trusted_names, args.ipv6, args.ssl, args.vhost)
+		w = ircnode.IRCNode(s, user.User(), args.threads, args.attack_channels,
+							args.attack_names, args.ignore_names, args.trusted_names)
 		threads.append(w)
-		args.ignore_names.append(w.getNickname())
+		args.ignore_names.append(w.getUser().getNickname())
 	try:
 
 		for t in threads:

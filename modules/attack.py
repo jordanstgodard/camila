@@ -1,22 +1,28 @@
 #!/bin/python
 
+import Queue
+
 class AttackModule(object):
 	def __init__(self, data=None):
 		self.setModuleName("attack")
 		self.setData(data)
-		self.setRunning(False)
+		self.setNode(None)
+		self.setQueue(None)
 
-	def start(self):
-		self.setRunning(True)
+	def start(self, queue):
+		self.setQueue(queue)
 
 	def stop(self):
-		self.setRunning(False)
+		self.getQueue().task_done()
 
 	def isRunning(self):
-		return self.is_running
+		return not self.getQueue().empty()
 
-	def setRunning(self, is_running):
-		self.is_running = is_running
+	def getQueue(self):
+		return self.queue
+
+	def setQueue(self, queue):
+		self.queue = queue
 
 	def getData(self):
 		return self.data
@@ -29,3 +35,9 @@ class AttackModule(object):
 
 	def setModuleName(self, module_name):
 		self.module_name = module_name
+
+	def getNode(self):
+		return self.node
+
+	def setNode(self, node):
+		self.node = node

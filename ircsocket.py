@@ -194,7 +194,7 @@ class IRCSocket(object):
 			if u.getPassword():
 				self.raw('PASS {0}'.format(u.getPassword()))
 		except socket.error as e:
-			print 'Failed to connect to {0}:{1}. {2}'.format(u.getAddress(), self.getServer().getPort(), e)
+			print 'Failed to connect to {0}:{1}. {2}'.format(s.getAddress(), self.getServer().getPort(), e)
 			self.reconnect()
 		else:
 			self.connected = True
@@ -264,7 +264,7 @@ class IRCSocket(object):
 								name = name.replace(name[0], "")
 							if name not in c.getUsers():
 								c.getUsers().append(user.User(name))
-								
+
 		# KICK auto join
 		elif args[1] == "KICK":
 			chan = args[2]

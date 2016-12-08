@@ -20,11 +20,6 @@ from libcamila import channel, server, user
 ******************************************************************************************
 '''
 
-debug = True
-
-def camila(message):
-	print '[camila] # {0}'.format(message)
-
 def main():
 	parser = argparse.ArgumentParser()
 	parser.add_argument('-a', '--attack-names', type=str, nargs='+', help="name list to attack. Overrides retrieving names!")

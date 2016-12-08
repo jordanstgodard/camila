@@ -46,9 +46,11 @@ Each of these commands must be preceeded by the word **camila**.
 | -c        | [add, remove, list]                           | Add, remove, or list attack channels               |
 | -i        | [add, remove, list]                           | Add, remove, or list ignore names                  |
 | -k        | [name1, name2,... nameN] or empty to kill all | Kill a list of workers or all if property is empty |
-| --modules | [list]                                        | List loaded modules			         |
+| --modules | [list]                                        | List loaded modules			                     |
 | --status  |                                               | List the status.                                   |
 | -T        | [add, remove, list]                           | Add, remove, or list trusted names                 |
+| --attack  | [add, remove, list, start, stop]              | Add, remove, list, start, or stop attacks          |
+
 
 Example usage:
 `/PRIVMSG camila camila -a list`
@@ -61,6 +63,16 @@ Will private message a nick, camila, with the command `camila -T add sapphire fr
 Note, only trusted names are able to run these commands. A non-trusted user may still message any camila node but will not be able to execute any commands. For this reason, one or more trusted names should be specified during execution time.
 
 Note, one can message any node in camila to execute these commands.
+
+
+# Using Attack Modules
+**camila** allows dynamic module execution using the `--attack` target at runtime through private messaging any node. See the following examples:
+`camila --attack list` followed by `camilla --attack add module_name` lists all available modules and adds the module with the name "module_name". When the modules are listed, the module name is followed by an @ and the package it is found in.
+
+When `camila --attack start` is executed, camila will run all the attacks added into the attack queue. Attack running for an indefinite set of time may be stopped at anytime using `camila --attack stop`.
+
+Note, these attacks may take a few seconds to stop. For example, a channel flood attack with no send delay will continue to send until all of its queued messages are sent. Thus, the stop signal is received but it may take a few seconds to see these changes.
+
 
 # Writing Attack Modules
 **camila** supports custom attack modules through creating modules that extend the `modules.attack.AttackModule` interface. When an attack module is placed within the /modules/ directory, **camila** will load the module automatically for use during runtime. Here are some rules for implementing modules:

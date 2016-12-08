@@ -70,7 +70,7 @@ def main():
 
 	proxy = None
 	proxy_port = None
-	
+
 	if args.proxies != []:
 		choice = random.choice(args.proxies)
 		proxy = choice.split(':')[0]
@@ -89,6 +89,14 @@ def main():
 	threads.append(master)
 
 	for i in range(args.threads):
+		if args.proxies != []:
+			choice = random.choice(args.proxies)
+			proxy = choice.split(':')[0]
+			proxy_port = int(choice.split(':')[-1])
+
+			s.setProxy(proxy)
+			s.setProxyPort(proxy_port)
+
 		w = ircnode.IRCNode(s, user.User(), args.threads, args.attack_channels,
 							args.attack_names, args.ignore_names, args.trusted_names)
 		threads.append(w)
